@@ -1,0 +1,10 @@
+class Main {
+   function void main() {
+      var TheGreatUroborosDance dance;
+      do TheGreatUroborosDance.newInstance();
+      let dance = TheGreatUroborosDance.getInstance();
+      do dance.run();
+      do dance.dispose();
+      return;
+   }
+}

@@ -1,0 +1,236 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/12/Screen.jack
+
+/**
+ * A library of functions for displaying graphics on the screen.
+ * The Hack physical screen consists of 256 rows (indexed 0..255, top to bottom)
+ * of 512 pixels each (indexed 0..511, left to right). The top left pixel on 
+ * the screen is indexed (0,0).
+ */
+class Screen {
+
+    static boolean color;   // false = white, true = black
+    static Array twoToThe;  // копия массива с битовыми масками из Math
+
+    /** Initializes the Screen. */
+    function void init() {
+        var int i;
+        let color = true;
+
+        let twoToThe = Array.new(16);
+        let i = 1;
+        let twoToThe[0] = i;
+        while (i < 16) {
+            let twoToThe[i] = twoToThe[i-1] + twoToThe[i-1];
+            let i = i + 1;
+        }
+
+        return;
+    }
+
+    /** Erases the entire screen. */
+    function void clearScreen() {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(0, 0, 511, 255);
+        do Screen.setColor(true);
+        return;
+    }
+
+    /** Sets the current color, to be used for all subsequent drawXXX commands.
+     *  Black is represented by true, white by false. */
+    function void setColor(boolean b) {
+        let color = b;
+        return;
+    }
+
+    /** Draws the (x,y) pixel, using the current color. */
+    function void drawPixel(int x, int y) {
+        var int address, value, bit;
+        let address = 16384 + (32 * y) + (x / 16);    // pointer to the word
+        let bit = x - ((x / 16) * 16);                // number of the bit in the word
+        let value = Memory.peek(address);             // value of the word
+        if (color) {
+            let value = value | twoToThe[bit];        // set the bit to 1
+        } else {
+            let value = value & (-twoToThe[bit] - 1); // set the bit to 0
+        }
+        do Memory.poke(address, value);
+        return;
+    }
+
+    /** Draws a line from pixel (x1,y1) to pixel (x2,y2), using the current color. */
+    function void drawLine(int x1, int y1, int x2, int y2) {
+        var int dx, dy, a, b;
+        var boolean neg;
+        if (x1 = x2) {
+            do Screen.drawVertical(x1, y1, y2);   // horizontal line special draw
+            return;
+        }
+        if (y1 = y2) {
+            do Screen.drawHorizonal(x1, x2, y1);  // vertical line special draw
+            return;
+        }
+        if (x1 > x2) {                            // make sure x2 > x1
+            let a = x1;
+            let x1 = x2;
+            let x2 = a;
+            let a = y1;
+            let y1 = y2;                          // теперь возможны 2 варианта линий (из 4):
+            let y2 = a;                           // слева-направо вверх или вниз
+        }
+        let dx = x2 - x1;   // строго положительный
+        let dy = y1 - y2;   // может быть отрицательным
+        if (dy < 0) {
+            let dy = -dy;
+            let neg = true;
+        } else {
+            let neg = false;
+        }
+        let a = 0;
+        let b = 0;
+        while ((~(a > dx)) & (~(b > dy))) {
+            if (neg) {
+                do Screen.drawPixel(x1 + a, y1 + b);
+            } else {
+                do Screen.drawPixel(x1 + a, y1 - b);       
+            }
+            if (((a * dy) - (b * dx)) < 0) {
+                let a = a + 1;
+            } else {
+                let b = b + 1;            
+            }
+        }
+        return;
+    }
+
+    function void drawVertical(int x, int y1, int y2) {
+        var int i;
+        if (y1 = y2) {
+            do Screen.drawPixel(x, y1);
+            return;
+        }
+        if (y1 > y2) {
+            let i = y1;
+            let y1 = y2;
+            let y2 = i;         // теперь линия идёт сверху вниз
+        }
+        let i = y2 - y1;        // гарантированно >= 0
+        while (i > -1) {
+            do Screen.drawPixel(x, y1 + i);
+            let i = i - 1;
+        }
+        return;
+    }
+
+    function void drawHorizonal(int x1, int x2, int y) {
+        var int i, a1, a2, b1, b2;
+        if (x1 = x2) {
+            do Screen.drawPixel(x1, y);
+            return;
+        }
+        if (x1 > x2) {
+            let i = x1;
+            let x1 = x2;
+            let x2 = i;         // теперь линия идёт слева направо
+        }
+
+        let i = x2 - x1;        // гарантированно >= 0, длина линии в пикселях
+        if (i < 16) {           // короткие линии по старинке, по пикселям
+            while (i > -1) {
+                do Screen.drawPixel(x1 + i, y);
+                let i = i - 1;
+            }
+            return;
+        }
+
+        let a1 = 16384 + (32 * y) + (x1 / 16); // полный адрес первого word в линии
+        let b1 = x1 - ((x1 / 16) * 16);        // первый бит линии в первом слове
+        do Screen.drawPartWord(a1, b1, true);  // отрисовка первого слова
+
+        
+        let a2 = 16384 + (32 * y) + (x2 / 16); // полный адрес последнего word в линии
+        let b2 = x2 - ((x2 / 16) * 16);        // последний бит линии в последнем слове
+        if (~(a1 = a2)) {
+            do Screen.drawPartWord(a2, b2, false); // отрисовка последнего слова
+        }
+
+        while (a2 > (a1 + 1)) {
+            let a1 = a1 + 1;
+            do Screen.drawWord(a1);            // отрисовка полными словами середины
+        }
+        return;
+    }
+
+    function void drawPartWord(int address, int nbit, boolean backward) {
+        var int n, i;
+        let n = Memory.peek(address);          // чтобы не затирать фон берём текущее значение
+        if (backward) {
+            let i = 15;
+            while (i > nbit) {
+                if (color) {                   // рутину с цветом можно вынести в отдельный метод
+                    let n = n | twoToThe[i];
+                } else {
+                    let n = n & (-twoToThe[i] - 1);
+                }
+                let i = i - 1;
+            }
+        } else {
+            let i = 0;
+            while (i < nbit) {
+                if (color) {
+                    let n = n | twoToThe[i];
+                } else {
+                    let n = n & (-twoToThe[i] - 1);
+                }
+                let i = i + 1;
+            }
+        }
+        do Memory.poke(address, n);
+        return;
+    }
+
+
+    function void drawWord(int address) {
+        if (color) {
+            do Memory.poke(address, -1);
+        } else {
+            do Memory.poke(address, 0); 
+        }
+        return;
+    }
+
+
+    /** Draws a filled rectangle whose top left corner is (x1, y1)
+     * and bottom right corner is (x2,y2), using the current color. */
+    function void drawRectangle(int x1, int y1, int x2, int y2) {
+        var int i;
+        if (x1 = x2) {
+            do Screen.drawVertical(x1, y1, y2);  // vertical line special draw
+            return;
+        }
+        if (y1 > y2) {
+            let i = y1;
+            let y1 = y2;
+            let y2 = i;         // теперь линии четырёхугольника идут сверху вниз
+        }
+        let i = y2 - y1;            
+        while (i > -1) {
+            do Screen.drawHorizonal(x1, x2, y1 + i);
+            let i = i - 1;
+        }
+        return;
+    }
+
+    /** Draws a filled circle of radius r<=181 around (x,y), using the current color. */
+    function void drawCircle(int x, int y, int r) {
+        var int i;
+        let i = -r;
+        while (i < (r+1)) {
+            do Screen.drawHorizonal(x - Math.sqrt((r*r)-(i*i)), x + Math.sqrt((r*r)-(i*i)), y + i);
+            let i = i + 1;
+        }
+        return;
+    }
+}

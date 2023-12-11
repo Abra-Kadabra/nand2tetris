@@ -1,0 +1,102 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/12/Memory.jack
+
+/**
+ * This library provides two services: direct access to the computer's main
+ * memory (RAM), and allocation and recycling of memory blocks. The Hack RAM
+ * consists of 32,768 words, each holding a 16-bit binary number.
+ */ 
+class Memory {
+
+    static Array ram;
+
+    static Array heap;
+    static int freeList;
+
+    static int SIZE;
+    static int NEXT;
+
+    /** Initializes the class. */
+    function void init() {
+        let ram = 0;
+
+        let heap = 2048;      // heapBase
+        let NEXT = 0;
+        let SIZE = 1;
+        let freeList = heap;
+        let heap[NEXT] = 0;      
+        let heap[SIZE] = 14334;
+        return;
+    }
+
+    /** Returns the RAM value at the given address. */
+    function int peek(int address) {
+        return ram[address];
+    }
+
+    /** Sets the RAM value at the given address to the given value. */
+    function void poke(int address, int value) {
+        let ram[address] = value;
+        return;
+    }
+
+    /** Finds an available RAM block of the given size and returns
+     *  a reference to its base address. */
+    function int alloc(int size) {
+        var Array current, previous, block;
+        let previous = null;
+        let current = freeList;
+        while ((current[SIZE]) < (size + 2)) { // пока найденый блок не подойдёт по размеру
+            if (current[NEXT] = 0) {           // больше свободных блоков нет
+                do Sys.error(6);               // 6 Memory.alloc Heap overflow
+            } else {                           // есть и другие свободные блоки
+                let previous = current;        // запоминаем текущий блок как предыдущий
+                let current = current[NEXT];   // выбираем следующий свободный блок
+            }
+        }
+        let block = current;                   // анонсируем выделяемый блок
+
+        if ((current[SIZE]) < (size + 5)) {    // особый случай - найденый блок полностью занимаем
+
+            if (~((current[NEXT]) = 0)) {      // занимаем НЕ последний свободный блок
+                let current = current[NEXT];   // назначаем следующий свободный блок текущим
+            } else {
+                do Output.printString("no more memory");
+            }
+
+        } else {                               // свободный блок больше чем необходимо
+            let current = block + size + 2;    // устанавливаем новое начало свободного блока
+            let current[NEXT] = block[NEXT];   // возвращаем его следующее звено в цепи freeList
+            let current[SIZE] = block[SIZE] - size - 2; // и урезаем его размер на size + 2
+            let block[SIZE] = size + 2;        // а вот размер точно нужен для deAlloc
+        }
+        let block[NEXT] = 777;             // нужно ли нам это - пока не ясно
+//        let block[NEXT] = current;             // нужно ли нам это - пока не ясно
+
+        if (previous = 0) {                    // если подошёл первый из свободных блоков
+            let freeList = current;            // устанавливаем freeList на новый из свободных
+        } else {
+            let previous[NEXT] = current;
+        }
+    
+        return block + 2; // возвращаем адрес начала данных найденного блока
+    }
+
+// результаты теста: 
+// 2048 + 22 = 2070 + 5 = 2075 + 502 = 2577 + 7002 = 9579 + 1000 = 10579 + 5803 = 16382
+// вся куча помечена свободной, лист имеет начало и имеет конец.
+// проблема одна - память остаётся фрагментирована. и ладно.
+
+
+    /** De-allocates the given object (cast as an array) by making
+     *  it available for future allocations. */
+    function void deAlloc(Array object) {
+        var Array newFree;
+        let newFree = object - 2;        // указатель на начало нового свободного блока
+        let newFree[NEXT] = freeList;    // ставим его первым, перед предыдущим freeList
+        let freeList = newFree;          // перемещаем указатель freeList на новый блок
+        return;
+    }    
+}
